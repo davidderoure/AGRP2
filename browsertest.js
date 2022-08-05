@@ -93,7 +93,7 @@ function MIDIMessageEventHandler(event) {
 // display human readable MIDI event
 
 function numberToName(note) {
-    var names = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb"];
+    var names = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
 
     return names[note % 12] + (Math.floor(note / 12) - 1); // assumes middle C = 60 = C4
 }

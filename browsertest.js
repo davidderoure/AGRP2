@@ -85,7 +85,7 @@ function MIDIMessageEventHandler(event) {
       case 0xC0: console.log("Program Change " + event.data[0].toString(16)); return;
       case 0xD0: console.log("Channel Pressure " + event.data[0].toString(16)); return;
       case 0xE0: console.log("Pitch Bend " + event.data[0].toString(16)); return;
-      case 0xF0: console.log("System Message " + event.data[0].toString(16)); return;
+//    case 0xF0: console.log("System Message " + event.data[0].toString(16)); return;
       
     }
 }

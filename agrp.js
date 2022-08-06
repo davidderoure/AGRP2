@@ -13,9 +13,14 @@
 var buffer = Array(1500);
 var ptr = 0;
 
-var timeCount = 0; // time, increments indefinitely, use with % 1500
+// size of canvas for "oscilloscope trace"
 
-var threshold = 5;
+var scopeWidth = 1200;
+var scopeHeight = 256;
+
+var timeCount = 0; // time, increments indefinitely
+
+var threshold = 5; // velocity threshold
 
 // set up to use web page as dashboard
 
@@ -24,7 +29,6 @@ var lastNoteElement = document.getElementById("lastNote");
 var timerElement = document.getElementById("timer");
 
 var ctx = document.getElementById("canvas").getContext('2d');
-ctx.fillStyle = "#0000FF";
 
 thresholdElement.innerHTML = threshold.toString();
 lastNoteElement.innerHTML = "none";
@@ -34,8 +38,22 @@ timerElement.innerHTML = "0";
 
 window.onload = function() {
     function updateCounter() {
-       timerElement.innerHTML = timeCount++;;
-       setTimeout(updateCounter, 20);
+
+        // delete previous 2x4 cursor
+        ctx.fillStyle = "white";
+        ctx.fillRect(timeCount % scopeWidth, scopeHeight - 4, 2, 4);
+
+        timerElement.innerHTML = timeCount++;;
+
+        // clear column
+        ctx.fillStyle = "white";
+        ctx.fillRect(timeCount % scopeWidth, 0, 2, scopeHeight);
+
+        // draw new 2x4 cursor
+        ctx.fillStyle = "blue";
+        ctx.fillRect(timeCount % scopeWidth, scopeHeight - 4, 2, 4);
+
+        setTimeout(updateCounter, 20);
     }
 
     updateCounter();
@@ -135,12 +153,17 @@ function noteOn(channel, note, velocity) {
             ptr = 0;
         }
 
-        // ctx.fillRect(ptr * 2, 256 - note, 2, 2);
-        ctx.fillRect(timeCount % 1500, 256 - note, 2, 2);
+        // show note on as green square
+        ctx.fillStyle = "green";
+        ctx.fillRect(timeCount % scopeWidth, scopeHeight - note, 2, 2);
     }
 }
 
 function noteOff(channel, note) {
+
+        // show note off as red square
+        ctx.fillStyle = "red";
+        ctx.fillRect(timeCount % scopeWidth, scopeHeight - note, 2, 2);
 }
 
 // end of agrp.js

@@ -3,7 +3,7 @@
 
    Reads incoming MIDI events, segments and classifies them.
 
-   This version handles the input and display.
+   This version handles the input and display, with some basic slope recognition.
 
    DDeR 2022-08-05
 */
@@ -21,6 +21,7 @@ var scopeWidth = 1200;
 var scopeHeight = 256;
 
 var timeCount = 0; // time, increments indefinitely
+var restSince = 0; // time of last note off which left no notes sounding
 
 var threshold = 5; // velocity threshold
 
@@ -31,7 +32,7 @@ var sameLength = 0;
 // set up to use web page as dashboard
 
 var thresholdElement = document.getElementById("threshold");
-var thisNoteElement = document.getElementById("thisNote");
+var thisNoteElement = document.getElementById("thisnote");
 var timerElement = document.getElementById("timer");
 var upLengthElement = document.getElementById("uplength");
 var downLengthElement = document.getElementById("downlength");
@@ -62,6 +63,16 @@ window.onload = function() {
         // draw new 2x4 cursor
         ctx.fillStyle = "blue";
         ctx.fillRect(timeCount % scopeWidth, scopeHeight - 4, 2, 4);
+
+        // draw any active notes
+	activeNotes.forEach(function (note) {
+            ctx.fillStyle = "gray";
+            ctx.fillRect(timeCount % scopeWidth, scopeHeight - note, 2, 2);
+        });
+
+        if (activeNotes.length == 0 && timeCount > restSince + 10) {
+		timeout();
+        }
 
         setTimeout(updateCounter, 20);
     }
@@ -160,7 +171,7 @@ function noteOn(channel, note, velocity) {
     activeNotes.push(note);
 
     // show note on as green square
-    ctx.fillStyle = "green";
+    ctx.fillStyle = "#00" + (128 + velocity).toString(16) + "00";
     ctx.fillRect(timeCount % scopeWidth, scopeHeight - note, 2, 2);
 
     var previous = buffer[ptr++];
@@ -177,21 +188,23 @@ function noteOn(channel, note, velocity) {
 
     if (note > previous) {
         upLength++;
-	if (downLength > 0) {
+	if (downLength > 4) {
 	    // detectedDown(downLength);
             detectedElement.innerHTML = "down" + downLength;
 	    downLength = 0;
 	}
+        downLength = 0;
         sameLength = 0;
     }
 
     if (note < previous) {
         downLength++;
-	if (upLength > 0) {
+	if (upLength > 4) {
 	    // detectedUp(upLength);
             detectedElement.innerHTML = "up" + upLength;
 	    upLength = 0;
 	}
+        upLength = 0;
         sameLength = 0;
     }
 
@@ -212,9 +225,34 @@ function noteOff(channel, note) {
         activeNotes.splice(position, 1);
     }
 
+    if (activeNotes.length == 0) {
+        restSince = timeCount;
+    }
+
     // show note off as red square
     ctx.fillStyle = "red";
     ctx.fillRect(timeCount % scopeWidth, scopeHeight - note, 2, 2);
+}
+
+function timeout() {
+    if (downLength > 4) {
+        // detectedDown(downLength);
+        detectedElement.innerHTML = "DOWN" + downLength;
+    }
+
+    if (upLength > 4) {
+        // detectedUp(upLength);
+        detectedElement.innerHTML = "UP" + upLength;
+    }
+
+    if (sameLength > 4) {
+        // detectedSame(sameLength);
+        detectedElement.innerHTML = "SAME" + sameLength;
+    }
+
+    downLength = 0;
+    upLength = 0;
+    sameLength = 0;
 }
 
 // end of agrp.js

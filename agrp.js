@@ -13,6 +13,8 @@
 var buffer = Array(1500);
 var ptr = 0;
 
+var activeNotes = []; // the stack of actively-pressed keys
+
 // size of canvas for "oscilloscope trace"
 
 var scopeWidth = 1200;
@@ -22,16 +24,24 @@ var timeCount = 0; // time, increments indefinitely
 
 var threshold = 5; // velocity threshold
 
+var upLength = 0;
+var downLength = 0;
+var sameLength = 0;
+
 // set up to use web page as dashboard
 
 var thresholdElement = document.getElementById("threshold");
-var lastNoteElement = document.getElementById("lastNote");
+var thisNoteElement = document.getElementById("thisNote");
 var timerElement = document.getElementById("timer");
+var upLengthElement = document.getElementById("uplength");
+var downLengthElement = document.getElementById("downlength");
+var sameLengthElement = document.getElementById("samelength");
+var detectedElement = document.getElementById("detected");
 
 var ctx = document.getElementById("canvas").getContext('2d');
 
 thresholdElement.innerHTML = threshold.toString();
-lastNoteElement.innerHTML = "none";
+thisNoteElement.innerHTML = "none";
 timerElement.innerHTML = "0";
 
 // set timer running
@@ -146,24 +156,65 @@ function numberToName(note) {
 }
 
 function noteOn(channel, note, velocity) {
-    if (velocity > threshold) {
-        lastNoteElement.innerHTML = numberToName(note);
-        buffer[ptr++] = note;
-        if (ptr == 1500) {
-            ptr = 0;
-        }
 
-        // show note on as green square
-        ctx.fillStyle = "green";
-        ctx.fillRect(timeCount % scopeWidth, scopeHeight - note, 2, 2);
+    activeNotes.push(note);
+
+    // show note on as green square
+    ctx.fillStyle = "green";
+    ctx.fillRect(timeCount % scopeWidth, scopeHeight - note, 2, 2);
+
+    var previous = buffer[ptr++];
+
+    thisNoteElement.innerHTML = numberToName(note);
+
+    if (ptr == 1500) {
+        ptr = 0;
     }
+
+    buffer[ptr] = note;
+
+    // recognisers
+
+    if (note > previous) {
+        upLength++;
+	if (downLength > 0) {
+	    // detectedDown(downLength);
+            detectedElement.innerHTML = "down" + downLength;
+	    downLength = 0;
+	}
+        sameLength = 0;
+    }
+
+    if (note < previous) {
+        downLength++;
+	if (upLength > 0) {
+	    // detectedUp(upLength);
+            detectedElement.innerHTML = "up" + upLength;
+	    upLength = 0;
+	}
+        sameLength = 0;
+    }
+
+    if (note == previous) {
+        sameLength++;
+    }
+
+    upLengthElement.innerHTML = upLength.toString();
+    downLengthElement.innerHTML = downLength.toString();
+    sameLengthElement.innerHTML = sameLength.toString();
 }
 
 function noteOff(channel, note) {
 
-        // show note off as red square
-        ctx.fillStyle = "red";
-        ctx.fillRect(timeCount % scopeWidth, scopeHeight - note, 2, 2);
+    // remove note from active notes
+    var position = activeNotes.indexOf(note);
+    if (position != -1) {
+        activeNotes.splice(position, 1);
+    }
+
+    // show note off as red square
+    ctx.fillStyle = "red";
+    ctx.fillRect(timeCount % scopeWidth, scopeHeight - note, 2, 2);
 }
 
 // end of agrp.js

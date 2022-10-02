@@ -8,10 +8,22 @@
   DDeR 2022-08-05
 
   Updated to support pitch bend and work in quarter tones DDeR 2022-08-25
+  Updated to store & display subgesture history, for gesture recognition DDeR 2022-08-25
 
 */
 
 // globals
+
+// timing parameters for subgesture recognisers
+
+minDownDuration = 10;
+minUpDuration = 10;
+minSameDuration = 10;
+minRestDuration = 10;
+
+// state is R, X, U, D, S = rest, detected one note, up, down, same
+
+var state = "R";
 
 // size of canvas for "oscilloscope trace" (set in agrp.html)
 
@@ -28,6 +40,8 @@ const activeNotes = []; // the stack of actively-pressed keys
 var timeCount = 0; // time, increments indefinitely
 var restSince = 0; // time of last note off which left no notes sounding
 
+var subgestures = []; // list of subgestures detected
+
 // var threshold = 5; // velocity threshold (currently unused)
 
 // used for mapping pitchbend to quartertones
@@ -40,9 +54,16 @@ var lastNote; // note from the last MIDI noteon, which pitch bend references
 var lastAmplitude;// amplitude from the last MIDI noteon
 
 // recogniser variables
-var upLength = 0;
-var downLength = 0;
-var sameLength = 0;
+var upLength = 0;      // >0 means we're ascending
+var upStartPitch = 0;
+var upStartTime = 0;
+var downLength = 0;    // >0 means we're descending
+var downStartPitch = 0;
+var downStartTime = 0;
+var sameLength = 0;    // >0 means same pitch (can occur during up or down)
+var sameStartTime = 0;
+var sameStartPitch = 0;
+var rest = 0;          // 1 means we are in a rest
 
 // set up to use web page as dashboard
 
@@ -52,7 +73,9 @@ var timerElement = document.getElementById("timer");
 var upLengthElement = document.getElementById("uplength");
 var downLengthElement = document.getElementById("downlength");
 var sameLengthElement = document.getElementById("samelength");
-var detectedElement = document.getElementById("detected");
+var subgestureElement = document.getElementById("subgesture");
+var subgestureHistoryElement = document.getElementById("subgesturehistory");
+var gestureElement = document.getElementById("gesture");
 
 var ctx = document.getElementById("canvas").getContext('2d');
 
@@ -85,7 +108,7 @@ window.onload = function() {
       ctx.fillRect(timeCount % scopeWidth, scopeHeight - note, 2, 2);
     });
 
-    if (activeNotes.length == 0 && timeCount > restSince + 10) {
+    if (activeNotes.length == 0 && timeCount > restSince + 100) {
         timeout();
     }
 
@@ -234,31 +257,83 @@ function noteOn(note, amplitude) {
 
   // recognisers
 
-  if (note > previous) {
-    upLength++;
-    if (downLength > 4) {
-      // detectedDown(downLength);
-      detectedElement.innerHTML = "down" + downLength;
-      downLength = 0;
-    }
+  // state is R, X, U, D, S = rest, detected one note, up, down, same
+
+  if (state == "R") {
+    state = "X";
+    startTime = timeCount;
+    upLength = 0;
     downLength = 0;
     sameLength = 0;
+    return;
   }
-
-  if (note < previous) {
-    downLength++;
-    if (upLength > 4) {
-      // detectedUp(upLength);
-      detectedElement.innerHTML = "up" + upLength;
-      upLength = 0;
+  
+  if (state == "X" && note > previous) {
+    state = "U";
+    upLength++;
+    upStartTime = startTime;
+    if (timeCount - upStartTime > minUpDuration) {
+      detected("U", upStartTime, timeCount - upStartTime, upLength);
     }
-    upLength = 0;
-    sameLength = 0;
   }
 
-  if (note == previous) {
-    sameLength++;
+  if (state == "X" && note < previous) {
+    state = "D";
+    downLength++;
+    downStartTime = startTime;
+    if (timeCount - downStartTime > minDownDuration) {
+      detected("D", downStartTime, timeCount - downStartTime, downLength);
+    }
   }
+
+  if (state == "U" && note > previous) {
+    upLength++;
+    if (timeCount - upStartTime > minUpDuration) {
+      detected("U", upStartTime, timeCount - upStartTime, upLength);
+    }
+  }
+
+  if (state == "D" && note < previous) {
+    downLength++;
+    if (timeCount - downStartTime > minDownDuration) {
+      detected("D", downStartTime, timeCount - downStartTime, downLength);
+    }
+  }
+
+  if (state == "S" && note == previous) {
+    sameLength++;
+    if (timeCount - sameStartTime > minSameDuration) {
+      detected("S", sameStartTime, timeCount - sameStartTime, sameLength);
+    }
+  }
+
+  if (state == "D" && note > previous) {
+    state = "U";
+    upStartTime = timeCount;
+    upStartPitch = previous;
+    if (timeCount - downStartTime > minDownDuration) {
+        detected("D", downStartTime, timeCount - downStartTime, downLength);
+    }
+    downLength = 0;
+  }
+
+  if (state == "U" && note < previous) {
+    state = "D";
+    downStartTime = timeCount;
+    downStartPitch = previous;
+    if (timeCount - upStartTime > minUpDuration) {
+        detected("U", upStartTime, timeCount - upStartTime, upLength);
+    }
+    downLength = 0;
+  }
+
+  if (state == "U" && note == previous) {
+  }
+
+  if (state == "D" && note == previous) {
+  }
+
+ // show live counts on dashboard
 
   upLengthElement.innerHTML = upLength.toString();
   downLengthElement.innerHTML = downLength.toString();
@@ -320,26 +395,49 @@ function MIDIpitchBend(channel, lsb, msb) { // lsb, msb are 7 bit values
 }
 
 // sub gestures
+// silence is subgesture end and the beginning of a rest
 
 function timeout() {
-  if (downLength > 4) {
-    // detectedDown(downLength);
-    detectedElement.innerHTML = "DOWN" + downLength;
+  if (state == "R") {
+      return;
   }
 
-  if (upLength > 4) {
-    // detectedUp(upLength);
-    detectedElement.innerHTML = "UP" + upLength;
+  if (state == "D") {
+      detected("D", downStartTime, timeCount - downStartTime, downLength);
   }
 
-  if (sameLength > 4) {
-    // detectedSame(sameLength);
-    detectedElement.innerHTML = "SAME" + sameLength;
+  if (state == "U") {
+      detected("U", upStartTime, timeCount - upStartTime, upLength);
   }
 
+  if (state == "S" || state == "X") {
+      detected("S", sameStartTime, timeCount - sameStartTime, sameLength);
+  }
+
+  restStartTime = timeCount;
   downLength = 0;
   upLength = 0;
   sameLength = 0;
+
+  state = "R";
 }
 
+function detected(subgesture, startTime, duration, n) {
+  subgestureElement.innerHTML = subgesture + " " + startTime.toString() + " " + duration.toString() + " " + n.toString();
+
+  if (subgestures.length == 0) {
+    subgestures.push(Array.of(subgesture, startTime, duration, n));
+  } else {
+    last = subgestures.at(-1);
+    if (last[0] == subgesture && last[1] == startTime) {
+      last[2] = duration;
+      last[3] = n;
+    } else {
+      subgestures.push(Array.of(subgesture, startTime, duration, n));
+    }
+  }
+
+  subgestureHistoryElement.innerHTML = subgestures.slice(-20).map(x => x[0]);
+}
+  
 // end of agrp.js

@@ -38,7 +38,6 @@ var ptr = 0;
 const activeNotes = []; // the stack of actively-pressed keys
 
 var timeCount = 0; // time, increments indefinitely
-var restSince = 0; // time of last note off which left no notes sounding
 
 var subgestures = []; // list of subgestures detected
 
@@ -54,25 +53,27 @@ var lastNote; // note from the last MIDI noteon, which pitch bend references
 var lastAmplitude;// amplitude from the last MIDI noteon
 
 // recogniser variables
-var upLength = 0;      // >0 means we're ascending
+var upLength = 0;
 var upStartPitch = 0;
 var upStartTime = 0;
-var downLength = 0;    // >0 means we're descending
+var downLength = 0;
 var downStartPitch = 0;
 var downStartTime = 0;
-var sameLength = 0;    // >0 means same pitch (can occur during up or down)
+var sameLength = 0;
 var sameStartTime = 0;
 var sameStartPitch = 0;
-var rest = 0;          // 1 means we are in a rest
+var restLength = 0;
+var restStartTime = 0;
 
 // set up to use web page as dashboard
 
-// var thresholdElement = document.getElementById("threshold");
 var thisNoteElement = document.getElementById("thisnote");
 var timerElement = document.getElementById("timer");
+var stateElement = document.getElementById("state");
 var upLengthElement = document.getElementById("uplength");
 var downLengthElement = document.getElementById("downlength");
 var sameLengthElement = document.getElementById("samelength");
+var restLengthElement = document.getElementById("restlength");
 var subgestureElement = document.getElementById("subgesture");
 var subgestureHistoryElement = document.getElementById("subgesturehistory");
 var gestureElement = document.getElementById("gesture");
@@ -108,9 +109,7 @@ window.onload = function() {
       ctx.fillRect(timeCount % scopeWidth, scopeHeight - note, 2, 2);
     });
 
-    if (activeNotes.length == 0 && timeCount > restSince + 100) {
-        timeout();
-    }
+    timeout();
 
     setTimeout(updateCounter, 20);
   }
@@ -245,19 +244,22 @@ function noteOn(note, amplitude) {
   ctx.fillStyle = "#00" + (155 + amplitude).toString(16) + "00";
   ctx.fillRect(timeCount % scopeWidth, scopeHeight - note, 2, 2);
 
-  var previous = buffer[ptr++];
-
   thisNoteElement.innerHTML = numberToName(note);
-
-  if (ptr == scopeWidth) {
-    ptr = 0;
-  }
 
   buffer[ptr] = note;
 
-  // recognisers
+  var previous = buffer[ (ptr > 0) ? ptr - 1 : scopeWidth - 1 ];
 
-  // state is R, X, U, D, S = rest, detected one note, up, down, same
+  if (++ptr == scopeWidth) {
+    ptr = 0;
+  }
+
+// SUBGESTURE RECOGNISER STATE MACHINE
+// see also timout()
+
+// state is R, X, U, D, S = rest, detected one note, up, down, same
+
+  restLength = 0;
 
   if (state == "R") {
     state = "X";
@@ -265,13 +267,16 @@ function noteOn(note, amplitude) {
     upLength = 0;
     downLength = 0;
     sameLength = 0;
+    displayCounts();
     return;
   }
-  
+
   if (state == "X" && note > previous) {
     state = "U";
-    upLength++;
+    upLength = 1;
+    sameLength = 0;
     upStartTime = startTime;
+    upStartPitch = previous;
     if (timeCount - upStartTime > minUpDuration) {
       detected("U", upStartTime, timeCount - upStartTime, upLength);
     }
@@ -279,10 +284,22 @@ function noteOn(note, amplitude) {
 
   if (state == "X" && note < previous) {
     state = "D";
-    downLength++;
+    downLength = 1;
+    sameLength = 0;
     downStartTime = startTime;
+    downStartPitch = previous;
     if (timeCount - downStartTime > minDownDuration) {
       detected("D", downStartTime, timeCount - downStartTime, downLength);
+    }
+  }
+
+  if (state == "X" && note == previous) {
+    state = "S";
+    sameLength = 1;
+    sameStartTime = timeCount;
+    sameStartPitch = previous;
+    if (timeCount - sameStartTime > minSameDuration) {
+        detected("S", sameStartTime, timeCount - sameStartTime, sameLength);
     }
   }
 
@@ -307,37 +324,104 @@ function noteOn(note, amplitude) {
     }
   }
 
-  if (state == "D" && note > previous) {
+  if (state == "S" && note > previous) {
+    if (timeCount - sameStartTime > minSameDuration) {
+        detected("S", sameStartTime, timeCount - sameStartTime, sameLength);
+    }
     state = "U";
     upStartTime = timeCount;
     upStartPitch = previous;
-    if (timeCount - downStartTime > minDownDuration) {
-        detected("D", downStartTime, timeCount - downStartTime, downLength);
-    }
+    upLength = 1;
     downLength = 0;
+    sameLength = 0;
   }
 
-  if (state == "U" && note < previous) {
+  if (state == "S" && note < previous) {
+    if (timeCount - sameStartTime > minSameDuration) {
+        detected("S", sameStartTime, timeCount - sameStartTime, sameLength);
+    }
     state = "D";
     downStartTime = timeCount;
     downStartPitch = previous;
+    upLength = 0;
+    downLength = 1;
+    sameLength = 0;
+  }
+
+  if (state == "D" && note > previous) {
+    if (timeCount - downStartTime > minDownDuration) {
+        detected("D", downStartTime, timeCount - downStartTime, downLength);
+    }
+    state = "U";
+    upStartTime = timeCount;
+    upStartPitch = previous;
+    upLength = 1;
+    downLength = 0;
+    sameLength = 0;
+  }
+
+  if (state == "U" && note < previous) {
     if (timeCount - upStartTime > minUpDuration) {
         detected("U", upStartTime, timeCount - upStartTime, upLength);
     }
-    downLength = 0;
+    state = "D";
+    downStartTime = timeCount;
+    downStartPitch = previous;
+    upLength = 0;
+    downLength = 1;
+    sameLength = 0;
   }
 
   if (state == "U" && note == previous) {
+    if (sameLength == 0) {
+      sameLength = 1;
+      sameStartTime = timeCount;
+      sameStartPitch = previous;
+    } else {
+      sameLength++;
+    }
+
+    if (sameLength > 0 && timeCount - sameStartTime > minSameDuration) {
+      if (timeCount - upStartTime > minUpDuration) {
+          detected("U", upStartTime, timeCount - upStartTime, upLength);
+      }
+      upLength = 0;
+      downLength = 0;
+      detected("S", sameStartTime, timeCount - sameStartTime, sameLength);
+      state = "S";
+    }
   }
 
   if (state == "D" && note == previous) {
+    if (sameLength == 0) {
+      sameLength = 1;
+      sameStartTime = timeCount;
+      sameStartPitch = previous;
+    } else {
+      sameLength++;
+    }
+
+    if (sameLength > 0 && timeCount - sameStartTime > minSameDuration) {
+      if (timeCount - downStartTime > minDownDuration) {
+          detected("D", downStartTime, timeCount - downStartTime, downLength);
+      }
+      upLength = 0;
+      downLength = 0;
+      detected("S", sameStartTime, timeCount - sameStartTime, sameLength);
+      state = "S";
+    }
   }
+  displayCounts();
+}
 
- // show live counts on dashboard
+  // show live counts on dashboard
 
+function displayCounts() {
+  stateElement.innerHTML = state;
   upLengthElement.innerHTML = upLength.toString();
   downLengthElement.innerHTML = downLength.toString();
   sameLengthElement.innerHTML = sameLength.toString();
+  restLengthElement.innerHTML = restLength.toString();
 }
 
 // note is in quartertones
@@ -351,13 +435,11 @@ function noteOff(note) {
     activeNotes.splice(position, 1);
   }
 
-  if (activeNotes.length == 0) {
-    restSince = timeCount;
-  }
-
   // show note off as red square
   ctx.fillStyle = "red";
   ctx.fillRect(timeCount % scopeWidth, scopeHeight - note, 2, 2);
+
+  timeout();
 }
 
 // convert pitchbend wheel position to quartertones (PitchBendCorrection)
@@ -398,28 +480,61 @@ function MIDIpitchBend(channel, lsb, msb) { // lsb, msb are 7 bit values
 // silence is subgesture end and the beginning of a rest
 
 function timeout() {
+
+  if (activeNotes.length > 0) {
+    return;
+  } 
+
   if (state == "R") {
-      return;
+    if (timeCount - restStartTime > minRestDuration) {
+          detected("R", restStartTime, timeCount - restStartTime, restLength);
+    }
+    restLength++;
+    displayCounts();
+    return;
   }
 
-  if (state == "D") {
+  if (restLength == 0) {
+    restStartTime = timeCount;
+    restLength = 1;
+    displayCounts();
+    return;
+  }
+
+  restLength++;
+    
+  if (timeCount < restStartTime + 20) {
+    return;
+  }
+
+  // now we have a proper rest
+
+  if (state == "D" && timeCount - downStartTime > minDownDuration) {
       detected("D", downStartTime, timeCount - downStartTime, downLength);
   }
 
-  if (state == "U") {
+  if (state == "U" && timeCount - upStartTime > minUpDuration) {
       detected("U", upStartTime, timeCount - upStartTime, upLength);
   }
 
-  if (state == "S" || state == "X") {
+  if (state == "S" && timeCount - sameStartTime > minSameDuration) {
       detected("S", sameStartTime, timeCount - sameStartTime, sameLength);
   }
 
-  restStartTime = timeCount;
+  if (state == "X" && timeCount - startTime > minSameDuration) {
+      detected("S", startTime, timeCount - startTime, 1);
+  }
+
+  state = "R";
+
+  detected("R", restStartTime, timeCount - restStartTime, restLength);
+
   downLength = 0;
   upLength = 0;
   sameLength = 0;
+  restLength = 0;
 
-  state = "R";
+  displayCounts();
 }
 
 function detected(subgesture, startTime, duration, n) {

@@ -9,6 +9,7 @@
 
   Updated to support pitch bend and work in quarter tones DDeR 2022-08-25
   Updated to store & display subgesture history, for gesture recognition DDeR 2022-08-25
+  Updated to read MIDI channel from URL DDeR 2022-11-11
 
 */
 
@@ -16,10 +17,10 @@
 
 // timing parameters for subgesture recognisers
 
-minDownDuration = 10;
-minUpDuration = 10;
-minSameDuration = 10;
-minRestDuration = 10;
+const minDownDuration = 10;
+const minUpDuration = 10;
+const minSameDuration = 10;
+const minRestDuration = 10;
 
 // state is R, X, U, D, S = rest, detected one note, up, down, same
 
@@ -46,7 +47,7 @@ var subgestures = []; // list of subgestures detected
 // used for mapping pitchbend to quartertones
 
 var pitchBendRange = 400; // Set to 400 for normal bend of +-200 cents
-// var pitchBendRange = 2400; // Set to 2400 for bend of +-octave for testing
+// var pitchBendRange = 9600; // Set to 2400 for bend of +-octave for testing
 
 var pitchBendCorrection = 0; // quartertone correction due to pitch bend wheel
 var lastNote; // note from the last MIDI noteon, which pitch bend references
@@ -67,8 +68,9 @@ var restStartTime = 0;
 
 // set up to use web page as dashboard
 
-var thisNoteElement = document.getElementById("thisnote");
+var midinElement = document.getElementById("midin");
 var timerElement = document.getElementById("timer");
+var thisNoteElement = document.getElementById("thisnote");
 var stateElement = document.getElementById("state");
 var upLengthElement = document.getElementById("uplength");
 var downLengthElement = document.getElementById("downlength");
@@ -83,6 +85,10 @@ var ctx = document.getElementById("canvas").getContext('2d');
 // thresholdElement.innerHTML = threshold.toString();
 thisNoteElement.innerHTML = "none";
 timerElement.innerHTML = "0";
+
+// Default MIDI input channel unless set in URL e.g. ?minin=1
+
+var MIDIchannel = -1; // -1 is omni in
 
 // set timer running
 
@@ -136,6 +142,28 @@ function onMIDIFailure(msg) {
   console.error("Failed to get MIDI access - " + msg);
 }
 
+getChannelFromURL(); // overrides default if midin specified in URL
+midinElement.innerHTML = MIDIchannel == "-1" ? "omni" : (MIDIchannel + 1).toString();
+console.log("Using MIDI channel (0-15): " + MIDIchannel);
+
+// use MIDI input channel from URL if present
+
+function getChannelFromURL() {
+  const queryString = window.location.search;
+  const urlParams = new URLSearchParams(queryString);
+
+  midin = urlParams.get("midin");
+
+  if (midin) {
+    let c = parseInt(midin);
+    if (!isNaN(c) && c > 0 && c <= 16) {
+	  MIDIchannel = c - 1; // channels are named 1-16, maps to 0-15
+    } else {
+      console.log("Invalid MIDI channel in URL: " + midin);
+    }
+  }
+}
+  
 // Success callback provides midiAccess.
 
 function onMIDISuccess(midiAccess) {
@@ -171,6 +199,12 @@ function onMIDISuccess(midiAccess) {
 
 function MIDIMessageEventHandler(event) {
   var channel = event.data[0] & 0x0f;
+
+  // ignore event if not on our specified input channel
+
+  if (MIDIchannel > -1 && MIDIchannel != channel) {
+    return;
+  }
 
   // switch using MIDI command
  
@@ -448,7 +482,7 @@ function MIDIpitchBend(channel, lsb, msb) { // lsb, msb are 7 bit values
   var bend = event.data[1] + 128 * event.data[2];
   //var cents = bend * 400 / 16384 - 200; // assumes bend range is +- 2 semitones
   var cents = (bend - 8192) * pitchBendRange / 16384;
-  console.log("Pitch Bend " + bend + " (" + Math.round(cents) + ")");
+  // console.log("Pitch Bend " + bend + " (" + Math.round(cents) + ")");
  
   if (activeNotes.length == 0) return;
  

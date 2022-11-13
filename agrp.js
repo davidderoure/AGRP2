@@ -9,7 +9,7 @@
 
   Updated to support pitch bend and work in quarter tones DDeR 2022-08-25
   Updated to store & display subgesture history, for gesture recognition DDeR 2022-08-25
-  Updated to read MIDI channel from URL DDeR 2022-11-11
+  Updated to read MIDI channels from URL DDeR 2022-11-13
 
 */
 
@@ -69,6 +69,7 @@ var restStartTime = 0;
 // set up to use web page as dashboard
 
 var midinElement = document.getElementById("midin");
+var midoutElement = document.getElementById("midout");
 var timerElement = document.getElementById("timer");
 var thisNoteElement = document.getElementById("thisnote");
 var stateElement = document.getElementById("state");
@@ -88,7 +89,8 @@ timerElement.innerHTML = "0";
 
 // Default MIDI input channel unless set in URL e.g. ?minin=1
 
-var MIDIchannel = -1; // -1 is omni in
+var MIDIinChannel = -1; // -1 is omni in
+var MIDIoutChannel = 0; // default to channel 1 (1-16)
 
 // set timer running
 
@@ -142,24 +144,39 @@ function onMIDIFailure(msg) {
   console.error("Failed to get MIDI access - " + msg);
 }
 
-getChannelFromURL(); // overrides default if midin specified in URL
-midinElement.innerHTML = MIDIchannel == "-1" ? "omni" : (MIDIchannel + 1).toString();
-console.log("Using MIDI channel (0-15): " + MIDIchannel);
+// ascertain MIDI input and output channels
+
+getChannelsFromURL(); // overides defaults if specified in URL SearchParams
+midinElement.innerHTML = MIDIinChannel == "-1" ? "omni" : (MIDIinChannel + 1).toString();
+midoutElement.innerHTML = MIDIoutChannel + 1;
+console.log("Using MIDI input channel (0-15): " + MIDIinChannel);
+console.log("Using MIDI output channel (0-15): " + MIDIoutChannel);
 
 // use MIDI input channel from URL if present
 
-function getChannelFromURL() {
+function getChannelsFromURL() {
   const queryString = window.location.search;
   const urlParams = new URLSearchParams(queryString);
 
-  midin = urlParams.get("midin");
+  var midin = urlParams.get("midin");
 
   if (midin) {
     let c = parseInt(midin);
     if (!isNaN(c) && c > 0 && c <= 16) {
-	  MIDIchannel = c - 1; // channels are named 1-16, maps to 0-15
+	  MIDIinChannel = c - 1; // channels are named 1-16, maps to 0-15
     } else {
-      console.log("Invalid MIDI channel in URL: " + midin);
+      console.log("Invalid MIDI input channel in URL: " + midin);
+    }
+  }
+
+  var midout = urlParams.get("midout");
+
+  if (midout) {
+    let c = parseInt(midout);
+    if (!isNaN(c) && c > 0 && c <= 16) {
+	  MIDIoutChannel = c - 1; // channels are named 1-16, maps to 0-15
+    } else {
+      console.log("Invalid MIDI output channel in URL: " + midout);
     }
   }
 }
@@ -202,7 +219,7 @@ function MIDIMessageEventHandler(event) {
 
   // ignore event if not on our specified input channel
 
-  if (MIDIchannel > -1 && MIDIchannel != channel) {
+  if (MIDIinChannel > -1 && MIDIinChannel != channel) {
     return;
   }
 

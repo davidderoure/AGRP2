@@ -10,6 +10,7 @@
   Updated to support pitch bend and work in quarter tones DDeR 2022-08-25
   Updated to store & display subgesture history, for gesture recognition DDeR 2022-08-25
   Updated to read MIDI channels from URL DDeR 2022-11-13
+  Updated to recognise some of the gestures in Tuba test audio DDeR 2022-11-13
 
 */
 
@@ -529,6 +530,44 @@ function MIDIpitchBend(channel, lsb, msb) { // lsb, msb are 7 bit values
 
 // sub gestures
 // silence is subgesture end and the beginning of a rest
+
+// Gestures defined in "tuba shapes 002 - Score.pdf":
+
+// A upward short runs, short spaces in between
+// B downward short runs, short spaces in between
+// C wider intervals
+// D staccato calls
+// E up-rips
+// F down-rips
+// G up-down runs, short spaces in between
+// H down-up runs, short spaces in between
+// I up runs, short spaces in between
+// J down runs, short spaces in between
+// J down runs, short spaces in between
+// K long trills
+// L long cresc-dim
+// M forte-piano
+// N long flz (flatterzunge == flutter tonguing)
+// O short trills
+// P random abandon
+
+// Short run is 5 consecutive chromatic notes
+// Rips are similar to runs - how do we distinguish?
+// Staccato calls is 12 staccato notes
+// up down is 6 plus 6 
+// Long run is e.g. 8
+
+// Subgestures are:
+// upward short run of 5 or 6 notes
+// downward short run of 5 or 6 notes
+// up-down run of 5 or 6 up then same down
+// down-up run of 5 or 6 down then same up
+// 12 staccato notes
+// short trill
+// long trill
+
+// Also
+// one long sustained note
 
 function timeout() {
 

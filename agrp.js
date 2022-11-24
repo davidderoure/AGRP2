@@ -21,6 +21,7 @@
 const minDownDuration = 10;
 const minUpDuration = 10;
 const minSameDuration = 10;
+const minTrillDuration = 10;
 const minRestDuration = 10;
 
 // state is R, X, U, D, S = rest, detected one note, up, down, same
@@ -64,6 +65,9 @@ var downStartTime = 0;
 var sameLength = 0;
 var sameStartTime = 0;
 var sameStartPitch = 0;
+var trillLength = 0;
+var trillStartTime = 0;
+var trillStartPitch = 0;
 var restLength = 0;
 var restStartTime = 0;
 
@@ -77,6 +81,7 @@ var stateElement = document.getElementById("state");
 var upLengthElement = document.getElementById("uplength");
 var downLengthElement = document.getElementById("downlength");
 var sameLengthElement = document.getElementById("samelength");
+var trillLengthElement = document.getElementById("trilllength");
 var restLengthElement = document.getElementById("restlength");
 var subgestureElement = document.getElementById("subgesture");
 var subgestureHistoryElement = document.getElementById("subgesturehistory");
@@ -319,6 +324,8 @@ function noteOn(note, amplitude) {
     upLength = 0;
     downLength = 0;
     sameLength = 0;
+    trillLength = 1;
+    startPitch = note;
     displayCounts();
     return;
   }
@@ -329,7 +336,7 @@ function noteOn(note, amplitude) {
     sameLength = 0;
     upStartTime = startTime;
     upStartPitch = previous;
-    if (timeCount - upStartTime > minUpDuration) {
+    if (upLength > 4 && timeCount - upStartTime > minUpDuration) {
       detected("U", upStartTime, timeCount - upStartTime, upLength);
     }
   }
@@ -340,7 +347,7 @@ function noteOn(note, amplitude) {
     sameLength = 0;
     downStartTime = startTime;
     downStartPitch = previous;
-    if (timeCount - downStartTime > minDownDuration) {
+    if (downLength > 4 && timeCount - downStartTime > minDownDuration) {
       detected("D", downStartTime, timeCount - downStartTime, downLength);
     }
   }
@@ -350,34 +357,45 @@ function noteOn(note, amplitude) {
     sameLength = 1;
     sameStartTime = timeCount;
     sameStartPitch = previous;
-    if (timeCount - sameStartTime > minSameDuration) {
+    if (sameLength > 4 && timeCount - sameStartTime > minSameDuration) {
         detected("S", sameStartTime, timeCount - sameStartTime, sameLength);
     }
   }
 
   if (state == "U" && note > previous) {
     upLength++;
-    if (timeCount - upStartTime > minUpDuration) {
+    if (upLength > 4 && timeCount - upStartTime > minUpDuration) {
       detected("U", upStartTime, timeCount - upStartTime, upLength);
     }
   }
 
   if (state == "D" && note < previous) {
     downLength++;
-    if (timeCount - downStartTime > minDownDuration) {
+    if (downLength > 4 && timeCount - downStartTime > minDownDuration) {
       detected("D", downStartTime, timeCount - downStartTime, downLength);
     }
   }
 
   if (state == "S" && note == previous) {
     sameLength++;
-    if (timeCount - sameStartTime > minSameDuration) {
+    if (sameLength > 4 && timeCount - sameStartTime > minSameDuration) {
       detected("S", sameStartTime, timeCount - sameStartTime, sameLength);
     }
   }
 
+  console.log("trill", Math.abs(note - startPitch), trillLength);
+  if (trillLength > 0 && Math.abs(note - startPitch) < 5) {
+    if (note != previous) { trillLength++; }
+    if (trillLength > 10 && timeCount - trillStartTime > minTrillDuration) {
+      detected("T", trillStartTime, timeCount - trillStartTime, trillLength);
+      state = "X";
+    }
+  } else {
+    trillLength = 0
+  }
+
   if (state == "S" && note > previous) {
-    if (timeCount - sameStartTime > minSameDuration) {
+    if (sameLength > 4 && timeCount - sameStartTime > minSameDuration) {
         detected("S", sameStartTime, timeCount - sameStartTime, sameLength);
     }
     state = "U";
@@ -389,7 +407,7 @@ function noteOn(note, amplitude) {
   }
 
   if (state == "S" && note < previous) {
-    if (timeCount - sameStartTime > minSameDuration) {
+    if (sameLength > 4 && timeCount - sameStartTime > minSameDuration) {
         detected("S", sameStartTime, timeCount - sameStartTime, sameLength);
     }
     state = "D";
@@ -397,11 +415,12 @@ function noteOn(note, amplitude) {
     downStartPitch = previous;
     upLength = 0;
     downLength = 1;
+    trillLength = 0;
     sameLength = 0;
   }
 
   if (state == "D" && note > previous) {
-    if (timeCount - downStartTime > minDownDuration) {
+    if (downLength > 4 && timeCount - downStartTime > minDownDuration) {
         detected("D", downStartTime, timeCount - downStartTime, downLength);
     }
     state = "U";
@@ -409,11 +428,12 @@ function noteOn(note, amplitude) {
     upStartPitch = previous;
     upLength = 1;
     downLength = 0;
+    if (trillLength == 0) { trillLength = 1; }
     sameLength = 0;
   }
 
   if (state == "U" && note < previous) {
-    if (timeCount - upStartTime > minUpDuration) {
+    if (upLength > 4 && timeCount - upStartTime > minUpDuration) {
         detected("U", upStartTime, timeCount - upStartTime, upLength);
     }
     state = "D";
@@ -421,6 +441,7 @@ function noteOn(note, amplitude) {
     downStartPitch = previous;
     upLength = 0;
     downLength = 1;
+    if (trillLength == 0) { trillLength = 1; }
     sameLength = 0;
   }
 
@@ -472,7 +493,9 @@ function displayCounts() {
   stateElement.innerHTML = state;
   upLengthElement.innerHTML = upLength.toString();
   downLengthElement.innerHTML = downLength.toString();
+  trillLengthElement.innerHTML = sameLength.toString();
   sameLengthElement.innerHTML = sameLength.toString();
+  trillLengthElement.innerHTML = trillLength.toString();
   restLengthElement.innerHTML = restLength.toString();
 }
 
@@ -599,20 +622,24 @@ function timeout() {
 
   // now we have a proper rest
 
-  if (state == "D" && timeCount - downStartTime > minDownDuration) {
+  if (state == "D" && downLength > 4 && timeCount - downStartTime > minDownDuration) {
       detected("D", downStartTime, timeCount - downStartTime, downLength);
   }
 
-  if (state == "U" && timeCount - upStartTime > minUpDuration) {
+  if (state == "U" && upLength > 4 && timeCount - upStartTime > minUpDuration) {
       detected("U", upStartTime, timeCount - upStartTime, upLength);
   }
 
-  if (state == "S" && timeCount - sameStartTime > minSameDuration) {
+  if (state == "S" && sameLength > 4 && timeCount - sameStartTime > minSameDuration) {
       detected("S", sameStartTime, timeCount - sameStartTime, sameLength);
   }
 
   if (state == "X" && timeCount - startTime > minSameDuration) {
       detected("S", startTime, timeCount - startTime, 1);
+  }
+
+  if (trillLength > 10 && timeCount - startTime > minTrillDuration) {
+      detected("T", startTime, timeCount - startTime, 1);
   }
 
   state = "R";
@@ -622,13 +649,13 @@ function timeout() {
   downLength = 0;
   upLength = 0;
   sameLength = 0;
+  trillLength = 0;
   restLength = 0;
 
   displayCounts();
 }
 
 function detected(subgesture, startTime, duration, n) {
-  subgestureElement.innerHTML = subgesture + " " + startTime.toString() + " " + duration.toString() + " " + n.toString();
 
   if (subgestures.length == 0) {
     subgestures.push(Array.of(subgesture, startTime, duration, n));
@@ -641,6 +668,8 @@ function detected(subgesture, startTime, duration, n) {
       subgestures.push(Array.of(subgesture, startTime, duration, n));
     }
   }
+
+  subgestureElement.innerHTML = subgesture + " " + startTime.toString() + " " + duration.toString() + " " + n.toString();
 
   subgestureHistoryElement.innerHTML = subgestures.slice(-20).map(x => x[0]);
 }

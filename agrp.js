@@ -11,7 +11,8 @@
   Updated to store & display subgesture history, for gesture recognition DDeR 2022-08-25
   Updated to read MIDI channels from URL DDeR 2022-11-13
   Updated to recognise some of the gestures in Tuba test audio DDeR 2022-11-13
-
+  Updated to emit gesture codes via MIDI 2022-11-24
+  Updated to tune specifically for Forager gestures 2022-11-25
 */
 
 // globals
@@ -27,6 +28,8 @@ const minLongDuration = 100;
 const trillTolerance = 6;
 const gradient = 6;
 
+var thisSeq = [];
+
 // state is R, X, U, D, S = rest, detected one note, up, down, same
 
 var state = "R";
@@ -35,6 +38,7 @@ var state = "R";
 
 const scopeWidth = 1200;
 const scopeHeight = 512; // using 256 quartertone pitches, 2 dots each
+tick = 20; // timeout
 
 const buffer = Array(scopeWidth);
 var ptr = 0;
@@ -128,7 +132,7 @@ window.onload = function() {
 
     timeout();
 
-    setTimeout(updateCounter, 20);
+    setTimeout(updateCounter, tick);
   }
 
   updateCounter();
@@ -321,6 +325,7 @@ function noteOn(note, amplitude) {
   thisNoteElement.innerHTML = numberToName(note);
 
   buffer[ptr] = note;
+  thisSeq.push(note);
 
   var previous = buffer[ (ptr > 0) ? ptr - 1 : scopeWidth - 1 ];
 
@@ -355,7 +360,7 @@ function noteOn(note, amplitude) {
     upStartPitch = previous;
     if (upLength > 4 && timeCount - upStartTime > minUpDuration) {
       detected("U", upStartTime, timeCount - upStartTime, upLength);
-    }
+    } 
   }
 
   if (state == "X" && note < previous && previous - note < gradient) {
@@ -383,6 +388,11 @@ function noteOn(note, amplitude) {
     upLength++;
     if (upLength > 4 && timeCount - upStartTime > minUpDuration) {
       detected("U", upStartTime, timeCount - upStartTime, upLength);
+    } else {
+      let c = slope(1);
+      if (c > 4) {
+        detected("U", timeCount - c * tick, c * tick, c);
+      }
     }
   }
 
@@ -390,6 +400,11 @@ function noteOn(note, amplitude) {
     downLength++;
     if (downLength > 4 && timeCount - downStartTime > minDownDuration) {
       detected("D", downStartTime, timeCount - downStartTime, downLength);
+    } else {
+      let c = slope(-1);
+      if (c > 4) {
+        detected("D", timeCount - c * tick, c * tick, c);
+      }
     }
   }
 
@@ -514,6 +529,36 @@ function displayCounts() {
   sameLengthElement.innerHTML = sameLength.toString();
   trillLengthElement.innerHTML = trillLength.toString();
   restLengthElement.innerHTML = restLength.toString();
+}
+
+// Check how many previous notes roughly follow this gradient
+
+function slope(x) {
+  let u = 0;
+  let d = 0;
+  for (var i = thisSeq.length; i > 0; i--) {
+    if (thisSeq[i] == thisSeq[i-1]) {
+      u++; d++;
+    }
+    if (thisSeq[i] > thisSeq[i-1]) {
+      u++;
+    } else {
+      d++;
+    }
+
+    if (u + d > 6) {
+      if (x > 0 && u <= d) { 
+        // console.log("U", u, "d", d);
+        return u; 
+      }
+      if (x < 0 && u <= d) { 
+        // console.log("u", u, "D", d);
+        return d; 
+      } 
+    } 
+  }
+  // console.log("u", u, "d", d);
+  return x > 0 ? u : d;
 }
 
 // note is in quartertones
@@ -644,6 +689,8 @@ function timeout() {
 
   // now we have a proper rest
 
+  thisSeq = [];
+
   if (state == "D" && downLength > 4 && timeCount - downStartTime > minDownDuration) {
       detected("D", downStartTime, timeCount - downStartTime, downLength);
   }
@@ -683,6 +730,17 @@ function detected(subgesture, startTime, duration, n) {
     subgestures.push(Array.of("START", 0, 0, 0));
   }
 
+/*
+1 (a); upward short runs
+2 (b); downward short runs
+3 (c); staccato calls
+4 (d); up-rips 
+5 (e); down-rips 
+6 (f); long trills 
+7 (h) flutter tongue 
+8 (j) long cresc-dim 
+*/
+
   last = subgestures.at(-1);
 
   if (last[0] == subgesture && last[1] == startTime) {
@@ -695,23 +753,23 @@ function detected(subgesture, startTime, duration, n) {
                 break;
       case "U": subgestureElement.innerHTML = "Up"; 
                 console.log(subgesture);
-                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 0]);
+                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 1]);
                 break;
       case "D": subgestureElement.innerHTML = "Down"; 
                 console.log(subgesture);
-                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 1]);
-                break;
-      case "S": subgestureElement.innerHTML = "Stabs"; 
-                console.log(subgesture);
                 midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 2]);
                 break;
-      case "L": subgestureElement.innerHTML = "Long"; 
+      case "S": subgestureElement.innerHTML = "Calls"; 
                 console.log(subgesture);
                 midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 3]);
                 break;
       case "T": subgestureElement.innerHTML = "Trill"; 
                 console.log(subgesture);
-                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 4]);
+                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 6]);
+                break;
+      case "L": subgestureElement.innerHTML = "Long"; 
+                console.log(subgesture);
+                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 8]);
                 break;
       default: subgestureElement.innerHTML = "unknown";
     }

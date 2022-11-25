@@ -22,7 +22,10 @@ const minDownDuration = 10;
 const minUpDuration = 10;
 const minSameDuration = 10;
 const minTrillDuration = 10;
-const minRestDuration = 10;
+const minRestDuration = 5;
+const minLongDuration = 100;
+const trillTolerance = 6;
+const gradient = 6;
 
 // state is R, X, U, D, S = rest, detected one note, up, down, same
 
@@ -43,8 +46,6 @@ const activeNotes = []; // the stack of actively-pressed keys
 var timeCount = 0; // time, increments indefinitely
 
 var subgestures = []; // list of subgestures detected
-
-// var threshold = 5; // velocity threshold (currently unused)
 
 // used for mapping pitchbend to quartertones
 
@@ -70,6 +71,7 @@ var trillStartTime = 0;
 var trillStartPitch = 0;
 var restLength = 0;
 var restStartTime = 0;
+var lastNoteOffTime = 0; // used to measure long notes
 
 // set up to use web page as dashboard
 
@@ -84,8 +86,8 @@ var sameLengthElement = document.getElementById("samelength");
 var trillLengthElement = document.getElementById("trilllength");
 var restLengthElement = document.getElementById("restlength");
 var subgestureElement = document.getElementById("subgesture");
+var subgestureargsElement = document.getElementById("subgestureargs");
 var subgestureHistoryElement = document.getElementById("subgesturehistory");
-var gestureElement = document.getElementById("gesture");
 
 var ctx = document.getElementById("canvas").getContext('2d');
 
@@ -97,6 +99,7 @@ timerElement.innerHTML = "0";
 
 var MIDIinChannel = -1; // -1 is omni in
 var MIDIoutChannel = 0; // default to channel 1 (1-16)
+var midiOutput = null; // global MIDI output
 
 // set timer running
 
@@ -215,6 +218,20 @@ function onMIDISuccess(midiAccess) {
   for (var output of midiAccess.outputs.values()) {
     // console.log(output); // displays name, manufacturer etc
     console.log(output.name);
+    if (output.name == "to Max 2") {
+      console.log("Found", output.name);
+      midiOutput = output;
+    }
+  }
+
+  // let MIDI out know we're here
+
+  if (midiOutput) {
+    console.log("Sending 8 test messages");
+    for (var i = 1; i <= 8; i++) {
+      console.log([0xB0 + MIDIoutChannel, 0x00, i]);
+      midiOutput.send([0xB0 + MIDIoutChannel, 0x00, i]);
+    }
   }
 }
 
@@ -330,7 +347,7 @@ function noteOn(note, amplitude) {
     return;
   }
 
-  if (state == "X" && note > previous) {
+  if (state == "X" && note > previous && note - previous < gradient) {
     state = "U";
     upLength = 1;
     sameLength = 0;
@@ -341,7 +358,7 @@ function noteOn(note, amplitude) {
     }
   }
 
-  if (state == "X" && note < previous) {
+  if (state == "X" && note < previous && previous - note < gradient) {
     state = "D";
     downLength = 1;
     sameLength = 0;
@@ -362,14 +379,14 @@ function noteOn(note, amplitude) {
     }
   }
 
-  if (state == "U" && note > previous) {
+  if (state == "U" && note > previous && note - previous < gradient) {
     upLength++;
     if (upLength > 4 && timeCount - upStartTime > minUpDuration) {
       detected("U", upStartTime, timeCount - upStartTime, upLength);
     }
   }
 
-  if (state == "D" && note < previous) {
+  if (state == "D" && note < previous && previous - note < gradient) {
     downLength++;
     if (downLength > 4 && timeCount - downStartTime > minDownDuration) {
       detected("D", downStartTime, timeCount - downStartTime, downLength);
@@ -383,8 +400,8 @@ function noteOn(note, amplitude) {
     }
   }
 
-  console.log("trill", Math.abs(note - startPitch), trillLength);
-  if (trillLength > 0 && Math.abs(note - startPitch) < 5) {
+  // console.log("trill", Math.abs(note - startPitch), trillLength);
+  if (trillLength > 0 && Math.abs(note - startPitch) < trillTolerance) {
     if (note != previous) { trillLength++; }
     if (trillLength > 10 && timeCount - trillStartTime > minTrillDuration) {
       detected("T", trillStartTime, timeCount - trillStartTime, trillLength);
@@ -514,6 +531,8 @@ function noteOff(note) {
   ctx.fillStyle = "red";
   ctx.fillRect(timeCount % scopeWidth, scopeHeight - note, 2, 2);
 
+  lastNoteOffTime = timeCount;
+
   timeout();
 }
 
@@ -595,6 +614,9 @@ function MIDIpitchBend(channel, lsb, msb) { // lsb, msb are 7 bit values
 function timeout() {
 
   if (activeNotes.length > 0) {
+    if (lastNoteOffTime < startTime && timeCount - startTime > minLongDuration) {
+      detected("L", startTime, timeCount - startTime, 1);
+    }
     return;
   } 
 
@@ -658,20 +680,55 @@ function timeout() {
 function detected(subgesture, startTime, duration, n) {
 
   if (subgestures.length == 0) {
-    subgestures.push(Array.of(subgesture, startTime, duration, n));
-  } else {
-    last = subgestures.at(-1);
-    if (last[0] == subgesture && last[1] == startTime) {
-      last[2] = duration;
-      last[3] = n;
-    } else {
-      subgestures.push(Array.of(subgesture, startTime, duration, n));
-    }
+    subgestures.push(Array.of("START", 0, 0, 0));
   }
 
-  subgestureElement.innerHTML = subgesture + " " + startTime.toString() + " " + duration.toString() + " " + n.toString();
+  last = subgestures.at(-1);
 
-  subgestureHistoryElement.innerHTML = subgestures.slice(-20).map(x => x[0]);
+  if (last[0] == subgesture && last[1] == startTime) {
+    last[2] = duration;
+    last[3] = n;
+  } else {
+    subgestures.push(Array.of(subgesture, startTime, duration, n));
+    switch (subgesture) {
+      case "R": if (duration > 10) { subgestureElement.innerHTML = "&nbsp"; }
+                break;
+      case "U": subgestureElement.innerHTML = "Up"; 
+                console.log(subgesture);
+                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 0]);
+                break;
+      case "D": subgestureElement.innerHTML = "Down"; 
+                console.log(subgesture);
+                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 1]);
+                break;
+      case "S": subgestureElement.innerHTML = "Stabs"; 
+                console.log(subgesture);
+                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 2]);
+                break;
+      case "L": subgestureElement.innerHTML = "Long"; 
+                console.log(subgesture);
+                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 3]);
+                break;
+      case "T": subgestureElement.innerHTML = "Trill"; 
+                console.log(subgesture);
+                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 4]);
+                break;
+      default: subgestureElement.innerHTML = "unknown";
+    }
+
+    subgestures = subgestures.slice(-20);
+    subgestureHistoryElement.innerHTML = subgestures.map(x => x[0]);
+  }
+
+  subgestureargsElement.innerHTML = startTime.toString() + " " + duration.toString() + " " + n.toString();
+
+  // Max sees incoming Channel, Number, Value
+  // We're sending channel 1 (which is actually 0), number 0, value 1..8
+/*
+  if (midiOutput) {
+    console.log("Sending", [0xB0 + MIDIoutChannel, 0x00, 0]);
+    midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 0]);
+  }
+*/
 }
-  
 // end of agrp.js

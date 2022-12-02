@@ -753,23 +753,26 @@ function detected(subgesture, startTime, duration, n) {
                 break;
       case "U": subgestureElement.innerHTML = "Up"; 
                 console.log(subgesture);
-                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 1]);
+                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 1]); }
+                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 4]); }
                 break;
       case "D": subgestureElement.innerHTML = "Down"; 
                 console.log(subgesture);
-                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 2]);
+                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 2]); }
+                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 5]); }
                 break;
       case "S": subgestureElement.innerHTML = "Calls"; 
                 console.log(subgesture);
-                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 3]);
+                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 3]); }
                 break;
       case "T": subgestureElement.innerHTML = "Trill"; 
                 console.log(subgesture);
-                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 6]);
+                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 6]); }
+                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 7]); }
                 break;
       case "L": subgestureElement.innerHTML = "Long"; 
                 console.log(subgesture);
-                midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 8]);
+                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 8]); }
                 break;
       default: subgestureElement.innerHTML = "unknown";
     }

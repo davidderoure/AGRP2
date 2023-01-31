@@ -4,7 +4,31 @@
     <title>Audio Gesture Recognition Prototype</title>
   </head>
   <body>
-    <h1>Audio Gesture Recognition Prototype</h1>
+    <h1>Audio Gesture Recognition Prototype v2</h1>
+
+    <form>
+      MIDI output channel:
+      <select id="midiOut">
+        <option>1</option>
+        <option>2</option>
+        <option>3</option>
+        <option>4</option>
+        <option>5</option>
+        <option>6</option>
+        <option>7</option>
+        <option>8</option>
+        <option>9</option>
+        <option>10</option>
+        <option>11</option>
+        <option>12</option>
+        <option>13</option>
+        <option>14</option>
+        <option>15</option>
+        <option>16</option>
+      </select>
+    </form>
+
+    <canvas id="canvas" width="1200" height="512" style="border:1px solid #222222;"></canvas>
 
     <p> in <span id="midin"></span> out <span id="midout"></span>
         timer <span id="timer"></span>
@@ -18,8 +42,6 @@
     <p style="font-size:36px">&nbsp<span id="subgesture"></span></p>
     <p><span id="subgesturehistory"></span>
        <span id="subgestureargs"></span></p>
-
-    <canvas id="canvas" width="1200" height="512" style="border:1px solid #222222;"></canvas>
 
     <script src="agrp.js"></script>
 

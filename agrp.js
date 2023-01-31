@@ -222,7 +222,8 @@ function onMIDISuccess(midiAccess) {
   for (var output of midiAccess.outputs.values()) {
     // console.log(output); // displays name, manufacturer etc
     console.log(output.name);
-    if (output.name == "to Max 2") {
+    // if (output.name == "to Max 2") { // for Voyager
+    if (output.name == "IAC Driver Bus 1") {
       console.log("Found", output.name);
       midiOutput = output;
     }
@@ -233,10 +234,17 @@ function onMIDISuccess(midiAccess) {
   if (midiOutput) {
     console.log("Sending 8 test messages");
     for (var i = 1; i <= 8; i++) {
-      console.log([0xB0 + MIDIoutChannel, 0x00, i]);
-      midiOutput.send([0xB0 + MIDIoutChannel, 0x00, i]);
+      midiSend(i);
     }
   }
+}
+
+function midiSend(gesture) {
+    if (!midiOutput) { return; }
+    console.log("midiSend", MIDIoutChannel, gesture);
+    // midiOutput.send([0xB0 + MIDIoutChannel, 0x00, gesture]); // Continuous controller for Voyager
+    midiOutput.send([0x90 + MIDIoutChannel, gesture, 0x40]); // Note On
+    midiOutput.send([0x80 + MIDIoutChannel, gesture, 0x40], window.performance.now() + 50.0); // Note Off
 }
 
 // Event handler handles MIDI note on and note off events
@@ -753,26 +761,26 @@ function detected(subgesture, startTime, duration, n) {
                 break;
       case "U": subgestureElement.innerHTML = "Up"; 
                 console.log(subgesture);
-                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 1]); }
-                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 4]); }
+                midiSend(1);
+                midiSend(4);
                 break;
       case "D": subgestureElement.innerHTML = "Down"; 
                 console.log(subgesture);
-                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 2]); }
-                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 5]); }
+                midiSend(2);
+                midiSend(5);
                 break;
       case "S": subgestureElement.innerHTML = "Calls"; 
                 console.log(subgesture);
-                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 3]); }
+                midiSend(3);
                 break;
       case "T": subgestureElement.innerHTML = "Trill"; 
                 console.log(subgesture);
-                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 6]); }
-                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 7]); }
+                midiSend(6);
+                midiSend(7);
                 break;
       case "L": subgestureElement.innerHTML = "Long"; 
                 console.log(subgesture);
-                if (midiOutput) { midiOutput.send([0xB0 + MIDIoutChannel, 0x00, 8]); }
+                midiSend(8);
                 break;
       default: subgestureElement.innerHTML = "unknown";
     }
